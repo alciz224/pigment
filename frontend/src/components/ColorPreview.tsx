@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import ImageColorPicker from './ImageColorPicker'
 
 interface ProportionEntry {
@@ -19,16 +19,15 @@ export default function ColorPreview({ rgb, proportions }: ColorPreviewProps) {
     console.log('Picked color from image:', { rgb, hex })
   }
 
-  // Clear picked color when result changes significantly (optional)
-  useEffect(() => {
-    // You could reset the picked color if the mix result changes
-    // setPickedFromImage(null)
-  }, [rgb])
+  // Clear picked color when result changes (optional - uncomment if desired)
+  // useEffect(() => {
+  //   setPickedFromImage(null)
+  // }, [rgb])
 
   if (!rgb) {
     return (
       <section className="island-shell rounded-2xl p-6">
-        <div className="relative flex h-64 items-center justify-center rounded-lg bg-[var(--surface)]">
+        <div className="flex h-64 items-center justify-center rounded-lg bg-[var(--surface)]">
           <p className="text-[var(--sea-ink-soft)]">
             Mixez au moins 2 pigments pour voir le résultat
           </p>
@@ -43,38 +42,44 @@ export default function ColorPreview({ rgb, proportions }: ColorPreviewProps) {
     ? 'text-[var(--sea-ink)]'
     : 'text-white'
 
+  const getContrastColor = (rgb: [number, number, number]) => {
+    const [r, g, b] = rgb
+    return (r * 0.299 + g * 0.587 + b * 0.114) > 128
+      ? 'text-[var(--sea-ink)]'
+      : 'text-white'
+  }
+
   return (
     <section className="island-shell relative rounded-2xl p-6">
-      {/* Floating picked color indicator - fixed to the card's top-right */}
-      {pickedFromImage && (
-        <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full bg-[var(--surface)]/80 backdrop-blur-sm border border-[var(--line)] px-3 py-1.5 shadow-lg">
-          <div
-            className="h-6 w-6 rounded-full border-2 border-white/50 shadow-sm"
-            style={{ backgroundColor: `rgb(${pickedFromImage[0]}, ${pickedFromImage[1]}, ${pickedFromImage[2]})` }}
-          />
-          <span className="text-xs font-mono font-semibold text-[var(--sea-ink)]">
-            #{pickedFromImage.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
-          </span>
-        </div>
-      )}
-
       <h2 className="mb-4 text-lg font-semibold text-[var(--sea-ink)]">
         Résultat
       </h2>
 
-      {/* Large color preview */}
+      {/* Large color preview with picked color badge */}
       <div
-        className="mb-4 flex h-56 items-center justify-center rounded-lg shadow-inner transition-colors duration-300"
+        className="mb-4 relative flex h-56 items-center justify-center rounded-lg shadow-inner transition-colors duration-300"
         style={{ backgroundColor: `rgb(${r}, ${g}, ${b})` }}
       >
-        <span className={`text-2xl font-bold ${textColor} drop-shadow-lg`}>
+        {/* Main HEX text - shifted when badge is present */}
+        <span className={`text-2xl font-bold ${textColor} drop-shadow-lg ${pickedFromImage ? 'mr-16' : ''}`}>
           {hex.toUpperCase()}
         </span>
-      </div>
 
-      {/* Image Color Picker button */}
-      <div className="my-4 flex justify-center border-t border-[var(--line)] pt-4">
-        <ImageColorPicker onColorPicked={handlePickColor} />
+        {/* Picked color badge - positioned inside the color box, top-right */}
+        {pickedFromImage && (
+          <div
+            className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full bg-black/20 backdrop-blur-sm border-2 border-white/40 px-2.5 py-0.5 shadow-lg transition-all duration-200"
+            title={`Picked: #${pickedFromImage.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}`}
+          >
+            <div
+              className="h-4 w-4 rounded-full border-2 border-white/60"
+              style={{ backgroundColor: `rgb(${pickedFromImage[0]}, ${pickedFromImage[1]}, ${pickedFromImage[2]})` }}
+            />
+            <span className={`text-[10px] font-bold uppercase ${getContrastColor(pickedFromImage)}`}>
+              {pickedFromImage.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* RGB values grid */}
@@ -91,6 +96,14 @@ export default function ColorPreview({ rgb, proportions }: ColorPreviewProps) {
           <p className="text-xs text-[var(--sea-ink-soft)]">B</p>
           <p className="text-xl font-bold text-[var(--sea-ink)]">{b}</p>
         </div>
+      </div>
+
+      {/* Image Color Picker button */}
+      <div className="my-4 flex justify-center border-t border-[var(--line)] pt-4">
+        <ImageColorPicker
+          onColorPicked={handlePickColor}
+          pickedColor={pickedFromImage}
+        />
       </div>
 
       {/* Mix proportions */}

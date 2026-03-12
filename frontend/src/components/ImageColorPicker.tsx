@@ -2,20 +2,20 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 
 interface ImageColorPickerProps {
   onColorPicked: (rgb: [number, number, number], hex: string) => void
-  initialColor?: [number, number, number] | null
+  pickedColor?: [number, number, number] | null
 }
 
-export default function ImageColorPicker({ onColorPicked, initialColor }: ImageColorPickerProps) {
+export default function ImageColorPicker({ onColorPicked, pickedColor }: ImageColorPickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [pickedColor, setPickedColor] = useState<[number, number, number] | null>(initialColor)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [hoverColor, setHoverColor] = useState<[number, number, number] | null>(null)
   const [magnifierPosition, setMagnifierPosition] = useState<{ x: number; y: number } | null>(null)
@@ -27,7 +27,6 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
   const closePicker = () => {
     setIsPickerOpen(false)
     setImageUrl(null)
-    setPickedColor(null)
     setZoom(1)
     setPan({ x: 0, y: 0 })
     setHoverColor(null)
@@ -41,7 +40,6 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
       reader.onload = (event) => {
         setImageUrl(event.target?.result as string)
         setIsPickerOpen(true)
-        setPickedColor(null)
         setZoom(1)
         setPan({ x: 0, y: 0 })
       }
@@ -81,9 +79,7 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
     const rgb = getPixelColor(e.clientX, e.clientY)
     if (rgb) {
-      setPickedColor(rgb)
       onColorPicked(rgb, `#${rgb.map(n => n.toString(16).padStart(2, '0')).join('')}`)
-      setTimeout(closePicker, 500) // Close after a short delay to show feedback
     }
   }, [getPixelColor, onColorPicked])
 
@@ -98,9 +94,13 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
     }
   }, [getPixelColor])
 
+  // Mouse handlers for panning
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true)
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+    // Only start drag if not clicking on image (pan mode)
+    if ((e.target as HTMLElement).tagName !== 'IMG') {
+      setIsDragging(true)
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+    }
   }, [pan])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -139,20 +139,6 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isPickerOpen, zoomIn, zoomOut, resetZoom])
 
-  // Close on Escape
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isPickerOpen) {
-        closePicker()
-      }
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [isPickerOpen])
-
-  // Preload image for canvas extraction
-  const imageLoaded = useRef(false)
-
   return (
     <div className="relative">
       <input
@@ -174,7 +160,7 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
         Pick from Image
       </button>
 
-      {/* Picked Color Indicator (shown when color is picked) */}
+      {/* Picked Color Indicator - shown on button */}
       {pickedColor && (
         <div
           className="absolute -right-2 -top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-[var(--surface)] shadow-lg ring-2 ring-[var(--lagoon)]/30 transition-all animate-bounce"
@@ -187,7 +173,7 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
       {isPickerOpen && imageUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={closePicker}>
           <div
-            className="relative flex max-h-[95vh] w-full max-w-6xl flex-col rounded-xl bg-[var(--surface)] shadow-2xl"
+            className="relative flex h-[85vh] w-full max-w-5xl flex-col rounded-xl bg-[var(--surface)] shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Header with controls */}
@@ -198,7 +184,7 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
                   onClick={resetZoom}
                   className="rounded-md border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-1 text-xs text-[var(--sea-ink)] hover:bg-[var(--link-bg-hover)] transition-colors"
                 >
-                  Reset
+                  Reset View
                 </button>
                 <button
                   onClick={closePicker}
@@ -212,45 +198,46 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
             </div>
 
             {/* Zoom controls */}
-            <div className="flex items-center gap-3 border-b border-[var(--line)] p-2">
+            <div className="flex items-center gap-3 border-b border-[var(--line)] p-3">
               <button
                 onClick={zoomOut}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] hover:bg-[var(--link-bg-hover)] transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] hover:bg-[var(--link-bg-hover)] transition-colors"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="0.1"
-                  max="10"
-                  step="0.1"
-                  value={zoom}
-                  onChange={e => setZoom(parseFloat(e.target.value))}
-                  className="w-32 accent-[var(--lagoon)]"
-                />
-                <span className="w-12 text-center text-xs font-mono text-[var(--sea-ink-soft)]">
-                  {Math.round(zoom * 100)}%
-                </span>
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
+                    value={zoom}
+                    onChange={e => setZoom(parseFloat(e.target.value))}
+                    className="w-36 accent-[var(--lagoon)]"
+                  />
+                  <span className="w-14 text-right text-sm font-mono text-[var(--sea-ink)]">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                </div>
+                <span className="text-[10px] text-[var(--sea-ink-soft)]">Drag to pan • Scroll to zoom</span>
               </div>
               <button
                 onClick={zoomIn}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] hover:bg-[var(--link-bg-hover)] transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] hover:bg-[var(--link-bg-hover)] transition-colors"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <div className="ml-2 text-xs text-[var(--sea-ink-soft)]">
-                Scroll or drag to pan • Click to pick • ESC to close
-              </div>
             </div>
 
-            {/* Image container with pan/zoom */}
+            {/* Image viewport */}
             <div
-              className="relative flex-1 overflow-hidden cursor-move"
+              ref={containerRef}
+              className="relative flex-1 overflow-hidden cursor-grab active:cursor-grabbing bg-[var(--surface-weak)]"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -258,10 +245,12 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
               onWheel={handleWheel}
             >
               <div
-                className="absolute"
+                className="absolute flex items-center justify-center"
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transformOrigin: '0 0'
+                  transformOrigin: '0 0',
+                  width: '100%',
+                  height: '100%'
                 }}
               >
                 <img
@@ -286,61 +275,27 @@ export default function ImageColorPicker({ onColorPicked, initialColor }: ImageC
               {/* Floating magnifier preview */}
               {magnifierPosition && hoverColor && (
                 <div
-                  className="pointer-events-none absolute transform -translate-x-1/2 -translate-y-[120%] rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-xl"
+                  className="pointer-events-none absolute transform -translate-x-1/2 -translate-y-[100%] rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-xl"
                   style={{ left: magnifierPosition.x, top: magnifierPosition.y }}
                 >
                   <div
-                    className="h-10 w-10 rounded-md border border-[var(--line)]"
+                    className="h-12 w-12 rounded-md border-2 border-[var(--line)]"
                     style={{ backgroundColor: `rgb(${hoverColor[0]}, ${hoverColor[1]}, ${hoverColor[2]})` }}
                   />
-                  <div className="mt-1 text-center">
-                    <p className="text-xs font-mono text-[var(--sea-ink)]">
-                      #{hoverColor.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
-                    </p>
-                    <p className="text-[10px] text-[var(--sea-ink-soft)]">
-                      {hoverColor[0]}, {hoverColor[1]}, {hoverColor[2]}
-                    </p>
-                  </div>
-                  <div
-                    className="mt-1 h-1 w-full rounded-full overflow-hidden"
-                    style={{ backgroundColor: `rgb(${hoverColor[0]}, ${hoverColor[1]}, ${hoverColor[2]})` }}
-                  />
-                  <div className="mt-1 h-1 w-full" style={{ backgroundColor: `rgb(${255 - hoverColor[0]}, ${255 - hoverColor[1]}, ${255 - hoverColor[2]})` }} />
+                  <p className="mt-1 text-center text-xs font-mono font-bold text-[var(--sea-ink)]">
+                    #{hoverColor.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
+                  </p>
+                  <p className="text-center text-[10px] text-[var(--sea-ink-soft)]">
+                    {hoverColor[0]}, {hoverColor[1]}, {hoverColor[2]}
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Footer with picked color */}
-            {pickedColor && (
-              <div className="flex items-center justify-center border-t border-[var(--line)] p-3 gap-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="h-10 w-10 rounded-lg border-2 border-[var(--line)] shadow-inner"
-                    style={{ backgroundColor: `rgb(${pickedColor[0]}, ${pickedColor[1]}, ${pickedColor[2]})` }}
-                  />
-                  <div>
-                    <p className="text-sm font-mono font-bold text-[var(--sea-ink)]">
-                      #{pickedColor.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
-                    </p>
-                    <p className="text-xs text-[var(--sea-ink-soft)]">
-                      RGB({pickedColor[0]}, {pickedColor[1]}, {pickedColor[2]})
-                    </p>
-                  </div>
-                </div>
-                <div className="ml-auto text-xs text-[var(--sea-ink-soft)]">
-                  Click again to pick a different color
-                </div>
-              </div>
-            )}
-
-            {/* Instructions when no color picked yet */}
-            {!pickedColor && (
-              <div className="flex items-center justify-center border-t border-[var(--line)] p-3">
-                <p className="text-center text-sm text-[var(--sea-ink-soft)]">
-                  Click anywhere on the image to pick a color • Zoom: {Math.round(zoom * 100)}%
-                </p>
-              </div>
-            )}
+            {/* Footer */}
+            <div className="border-t border-[var(--line)] p-3 text-center text-sm text-[var(--sea-ink-soft)]">
+              <p>Click on the image to pick a color • Drag to pan • Scroll to zoom • ESC to close</p>
+            </div>
           </div>
         </div>
       )}
