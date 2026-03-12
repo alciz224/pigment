@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[c|d]
+*$py.class
+*.so
+.Python
+.env
+venv/
+.venv/
+env/
+.idea
+
+# Node.js
+node_modules/
+.npm
+
+# Frontend build
+frontend/.output/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Misc
+.cache/
+.claude/
