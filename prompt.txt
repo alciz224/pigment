@@ -1,0 +1,1100 @@
+
+
+# Prompt complet — Application de mélange de pigments
+
+---
+
+## 1. Objectif
+
+Créer une application web interactive simulant le mélange de peinture. L'utilisateur sélectionne entre 2 et 7 pigments parmi une palette, ajuste leurs proportions via des sliders (somme = 100 %), et voit la couleur résultante mise à jour en temps réel.
+
+Le mélange utilise le modèle **Kubelka-Munk deux constantes** (K et S séparés, par canal RGB).
+
+---
+
+## 2. Stack technique
+
+```
+Frontend : TanStack Start (React 19, file-based routing, Server Functions)
+Backend  : Intégré via Server Functions (pas de FastAPI séparé)
+HTTP     : fetch API + TanStack Server Functions
+Stockage : in-memory (Map/object dans le serveur)
+Calcul   : frontend immédiat (Réactif), Server Functions pour les données
+```
+
+> **Note sur TanStack Start** : Éviter les appels API manuels (`fetch('/api/...')`). Utiliser les **Server Functions** (fonctions serveur) qui sont automatiquement exposées comme endpoints et appelables depuis le client sans boilerplate CORS/configuration.
+
+---
+
+## 3. Modèle physique
+
+### 3.1 Kubelka-Munk deux constantes
+
+Chaque pigment possède deux propriétés spectrales **par canal RGB** :
+- **K** = coefficient d'absorption `[K_R, K_G, K_B]`
+- **S** = coefficient de diffusion `[S_R, S_G, S_B]`
+
+### 3.2 Mélange
+
+K et S se mélangent **séparément**, pondérés par les concentrations :
+
+```
+K_mix(c) = Σ (w_i × K_i(c))    pour c ∈ {R, G, B}
+S_mix(c) = Σ (w_i × S_i(c))    pour c ∈ {R, G, B}
+```
+
+> ⚠️ On ne mélange **jamais** les ratios K/S directement.
+> On mélange K et S, puis on calcule le ratio.
+
+### 3.3 Ratio K/S du mélange
+
+```
+(K/S)_mix(c) = K_mix(c) / max(S_mix(c), 1e-10)
+```
+
+Le `max` évite la division par zéro.
+
+### 3.4 Réflectance (couche opaque infinie)
+
+Pour chaque canal `c` :
+
+```
+x = (K/S)_mix(c)
+R(c) = 1 + x − √(x² + 2x)
+R(c) = clamp(R(c), 0, 1)
+```
+
+Vérification :
+- x = 0 → R = 1 (réflexion totale ✓)
+- x → ∞ → R → 0 (absorption totale ✓)
+
+### 3.5 Conversion réflectance → sRGB
+
+La réflectance R(c) est en espace linéaire. Appliquer la correction gamma sRGB :
+
+```
+si R_lin ≤ 0.0031308 :
+    R_srgb = 12.92 × R_lin
+sinon :
+    R_srgb = 1.055 × R_lin^(1/2.4) − 0.055
+```
+
+Puis convertir en entier :
+
+```
+valeur_8bit = round(clamp(R_srgb, 0, 1) × 255)
+```
+
+Appliquer à chaque canal (R, G, B) indépendamment.
+
+---
+
+## 3. Modèle physique
+
+### 3.1 Kubelka-Munk deux constantes
+
+Chaque pigment possède deux propriétés spectrales **par canal RGB** :
+- **K** = coefficient d'absorption `[K_R, K_G, K_B]`
+- **S** = coefficient de diffusion `[S_R, S_G, S_B]`
+
+### 3.2 Mélange
+
+K et S se mélangent **séparément**, pondérés par les concentrations :
+
+```
+K_mix(c) = Σ (w_i × K_i(c))    pour c ∈ {R, G, B}
+S_mix(c) = Σ (w_i × S_i(c))    pour c ∈ {R, G, B}
+```
+
+> ⚠️ On ne mélange **jamais** les ratios K/S directement.
+> On mélange K et S, puis on calcule le ratio.
+
+### 3.3 Ratio K/S du mélange
+
+```
+(K/S)_mix(c) = K_mix(c) / max(S_mix(c), 1e-10)
+```
+
+Le `max` évite la division par zéro.
+
+### 3.4 Réflectance (couche opaque infinie)
+
+Pour chaque canal `c` :
+
+```
+x = (K/S)_mix(c)
+R(c) = 1 + x − √(x² + 2x)
+R(c) = clamp(R(c), 0, 1)
+```
+
+Vérification :
+- x = 0 → R = 1 (réflexion totale ✓)
+- x → ∞ → R → 0 (absorption totale ✓)
+
+### 3.5 Conversion réflectance → sRGB
+
+La réflectance R(c) est en espace linéaire. Appliquer la correction gamma sRGB :
+
+```
+si R_lin ≤ 0.0031308 :
+    R_srgb = 12.92 × R_lin
+sinon :
+    R_srgb = 1.055 × R_lin^(1/2.4) − 0.055
+```
+
+Puis convertir en entier :
+
+```
+valeur_8bit = round(clamp(R_srgb, 0, 1) × 255)
+```
+
+Appliquer à chaque canal (R, G, B) indépendamment.
+
+---
+
+## 4. Données des pigments
+
+Les données sont servies via une **Server Function** depuis `src/routes/api/pigments.ts`. Chaque pigment a des valeurs K et S par canal [R, G, B].
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Blanc de Titane",
+    "code": "PW6",
+    "K": [0.005, 0.005, 0.005],
+    "S": [3.0, 3.0, 3.0]
+  },
+  {
+    "id": 2,
+    "name": "Noir d'Ivoire",
+    "code": "PBk9",
+    "K": [10.0, 10.0, 10.0],
+    "S": [0.12, 0.12, 0.12]
+  },
+  {
+    "id": 3,
+    "name": "Rouge de Cadmium",
+    "code": "PR108",
+    "K": [0.01, 8.0, 12.0],
+    "S": [1.0, 1.0, 1.0]
+  },
+  {
+    "id": 4,
+    "name": "Bleu Outremer",
+    "code": "PB29",
+    "K": [12.0, 4.0, 0.03],
+    "S": [1.0, 1.0, 1.0]
+  },
+  {
+    "id": 5,
+    "name": "Jaune de Cadmium",
+    "code": "PY37",
+    "K": [0.01, 0.06, 10.0],
+    "S": [1.2, 1.2, 1.2]
+  },
+  {
+    "id": 6,
+    "name": "Vert Émeraude",
+    "code": "PG18",
+    "K": [8.0, 0.08, 1.5],
+    "S": [1.0, 1.0, 1.0]
+  },
+  {
+    "id": 7,
+    "name": "Terre de Sienne Brûlée",
+    "code": "PBr7",
+    "K": [0.8, 4.0, 10.0],
+    "S": [0.8, 0.8, 0.8]
+  }
+]
+```
+
+**Couleurs résultantes attendues** (pour vérification) :
+
+| Pigment | RGB approximatif |
+|---|---|
+| Blanc de Titane | (248, 248, 248) |
+| Noir d'Ivoire | (20, 20, 20) |
+| Rouge de Cadmium | (240, 55, 44) |
+| Bleu Outremer | (56, 90, 229) |
+| Jaune de Cadmium | (241, 223, 63) |
+| Vert Émeraude | (67, 214, 124) |
+| Terre de Sienne Brûlée | (142, 83, 54) |
+
+---
+
+## 5. Architecture TanStack Start
+
+```
+pigment-mixer/
+│
+└── frontend/
+    └── src/
+        ├── router.tsx                    # Création du router + RegistrationType
+        ├── routeTree.gen.ts              # Généré automatiquement
+        ├── styles.css                    # Tailwind + tokens CSS
+        │
+        ├── routes/
+        │   ├── __root.tsx                # Layout racine (html, head, shell)
+        │   ├── index.tsx                 # Page d'accueil (component principal)
+        │   └── api/
+        │       ├── pigments.ts           # GET /api/pigments (Server Function)
+        │       └── mixes.ts              # POST /api/compute (Server Function)
+        │
+        ├── components/
+        │   ├── PaletteSelector.tsx
+        │   ├── PigmentSlider.tsx
+        │   ├── SliderPanel.tsx
+        │   └── ColorPreview.tsx
+        │
+        └── lib/
+            ├── engine/
+            │   └── mixEngine.ts          # Moteur Kubelka-Munk frontend
+            └── hooks/
+                └── usePigmentMix.ts      # State + logique métier
+
+```
+
+> **Philosophie TanStack Start** :
+> - Routage par fichiers (convention sur `src/routes/`)
+> - Server Functions = endpoints sans boilerplate
+> - Co-location : les routes peuvent importer des composants locaux
+> - SSR/Streaming automatique via `createRootRoute`
+> - Type-safety complète via `routeTree.gen.ts`
+
+---
+
+## 6. Server Functions (TanStack Start)
+
+### 6.1 Définition d'une Server Function
+
+Dans `src/routes/api/pigments.ts` :
+
+```typescript
+import { createServerFn } from '@tanstack/react-start'
+
+// DONNÉES en mémoire (pour la simplicité)
+const pigmentsData = [
+  {
+    id: 1,
+    name: "Blanc de Titane",
+    code: "PW6",
+    K: [0.005, 0.005, 0.005],
+    S: [3.0, 3.0, 3.0],
+  },
+  // ... autres pigments
+]
+
+export const getPigments = createServerFn({
+  method: 'GET',
+  // Pas besoin de config CORS : SSR intégré
+})
+.validator((d: unknown) => {
+  // GET sans corps → retourner undefined ou throw
+  return undefined
+})
+.handler(() => {
+  return { success: true, data: pigmentsData }
+})
+```
+
+### 6.2 Appel depuis le client
+
+```typescript
+// Dans un composant ou hook
+const { data: pigments } = useServerFn({ fn: getPigments })
+// OU pour un POST :
+const result = await getMixedColor({ pigments: [...] })
+```
+
+**Important** : Ne pas utiliser `fetch('/api/...')` manuellement. Les Server Functions sont générées automatiquement avec types complets.
+
+### 6.3 Persistance in-memory
+
+```typescript
+// Importer un Map persistant entre requêtes (module-level singleton)
+const savedMixes = new Map<number, { name: string; pigments: PigmentProportion[] }>()
+let nextId = 1
+
+export const computeMix = createServerFn({
+  method: 'POST',
+  validator: (d: unknown) => {
+    // Valider avec Zod/type guards
+    if (!isMixRequest(d)) throw new Error('Invalid request')
+    return d
+  },
+})
+.handler(async ({ data }) => {
+  // Calcul côté serveur si nécessaire
+  const result = computeKubelkaMunk(data.pigments)
+  return result
+})
+```
+
+---
+
+## 7. Frontend avec TanStack Start
+
+### 7.1 Moteur de mélange local (client)
+
+```typescript
+// lib/engine/mixEngine.ts
+
+/**
+ * Mélange Kubelka-Munk deux constantes (K et S séparés).
+ */
+export function computeMix(pigments: Array<{ K: [number, number, number]; S: [number, number, number]; weight: number }>) {
+  const K_mix = [0, 0, 0]
+  const S_mix = [0, 0, 0]
+
+  for (const p of pigments) {
+    for (let c = 0; c < 3; c++) {
+      K_mix[c] += p.weight * p.K[c]
+      S_mix[c] += p.weight * p.S[c]
+    }
+  }
+
+  const rgb: [number, number, number] = [0, 0, 0]
+
+  for (let c = 0; c < 3; c++) {
+    const ks = K_mix[c] / Math.max(S_mix[c], 1e-10)
+    const R = ks <= 0 ? 1.0 : 1 + ks - Math.sqrt(ks * ks + 2 * ks)
+    const R_clamped = Math.max(0, Math.min(1, R))
+    rgb[c] = Math.round(linearToSrgb(R_clamped) * 255)
+  }
+
+  return { rgb }
+}
+
+function linearToSrgb(c: number): number {
+  if (c <= 0.0031308) return 12.92 * c
+  return 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055
+}
+```
+
+---
+
+## 8. Hook principal avec Server Functions
+
+```typescript
+// lib/hooks/usePigmentMix.ts
+import { useServerFn } from '@tanstack/react-start'
+import { useState, useMemo, useCallback } from 'react'
+import { computeMix } from '../engine/mixEngine'
+import { getPigments } from '../routes/api/pigments'
+
+export function usePigmentMix() {
+  // Chargement des pigments via Server Function
+  const { data: pigmentsData, isLoading, error } = useServerFn({ fn: getPigments })
+
+  // State local
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [proportions, setProportions] = useState<Record<number, number>>({})
+
+  // Calcul réactif (immédiat, pas d'appel réseau)
+  const mixResult = useMemo(() => {
+    if (selectedIds.length < 2) return null
+
+    const selectedPigments = pigmentsData?.data
+      .filter(p => selectedIds.includes(p.id))
+      .map(p => ({
+        K: p.K as [number, number, number],
+        S: p.S as [number, number, number],
+        weight: proportions[p.id] / 100,
+      })) ?? []
+
+    return computeMix(selectedPigments)
+  }, [pigmentsData, selectedIds, proportions])
+
+  // Toggle pigment
+  const togglePigment = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const isSelected = prev.includes(id)
+      let newIds: number[]
+
+      if (isSelected && prev.length > 2) {
+        // Retirer
+        newIds = prev.filter(i => i !== id)
+      } else if (!isSelected && prev.length < 7) {
+        // Ajouter
+        newIds = [...prev, id]
+      } else {
+        return prev
+      }
+
+      // Répartition équitable
+      const equalShare = 100 / newIds.length
+      setProportions(newIds.reduce((acc, i) => ({ ...acc, [i]: equalShare }), {}))
+
+      return newIds
+    })
+  }, [])
+
+  // Update proportion avec normalisation
+  const updateProportion = useCallback((id: number, value: number) => {
+    setProportions(prev => {
+      const clamped = Math.min(100, Math.max(0, value))
+      const otherIds = selectedIds.filter(i => i !== id)
+      const othersSum = otherIds.reduce((sum, i) => sum + (prev[i] || 0), 0)
+      const remaining = 100 - clamped
+
+      const newProportions: Record<number, number> = { [id]: clamped }
+
+      if (otherIds.length === 0) {
+        newProportions[id] = 100
+      } else if (othersSum === 0) {
+        const share = remaining / otherIds.length
+        otherIds.forEach(i => { newProportions[i] = share })
+      } else {
+        otherIds.forEach(i => {
+          newProportions[i] = ((prev[i] || 0) / othersSum) * remaining
+        })
+      }
+
+      return newProportions
+    })
+  }, [selectedIds])
+
+  return {
+    pigments: pigmentsData?.data ?? [],
+    isLoading,
+    error,
+    selectedIds,
+    proportions,
+    mixResult,
+    togglePigment,
+    updateProportion,
+  }
+}
+```
+
+---
+
+## 9. Page principale (route)
+
+```typescript
+// routes/index.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { usePigmentMix } from '../lib/hooks/usePigmentMix'
+import { PaletteSelector } from '../components/PaletteSelector'
+import { SliderPanel } from '../components/SliderPanel'
+import { ColorPreview } from '../components/ColorPreview'
+
+export const Route = createFileRoute('/')({
+  component: PigmentMixerPage,
+})
+
+function PigmentMixerPage() {
+  const {
+    pigments,
+    isLoading,
+    error,
+    selectedIds,
+    proportions,
+    mixResult,
+    togglePigment,
+    updateProportion,
+  } = usePigmentMix()
+
+  if (isLoading) return <div className="p-8">Chargement des pigments...</div>
+  if (error) return <div className="p-8 text-red-600">Erreur: {error.message}</div>
+
+  const selectedPigments = pigments.filter(p => selectedIds.includes(p.id))
+
+  return (
+    <main className="container mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6">Mélangeur de Pigments</h1>
+
+      <div className="grid gap-8 md:grid-cols-2">
+        <section>
+          <PaletteSelector
+            pigments={pigments}
+            selectedIds={selectedIds}
+            onToggle={togglePigment}
+          />
+          <SliderPanel
+            pigments={selectedPigments}
+            proportions={proportions}
+            onChange={updateProportion}
+            minSelections={2}
+          />
+        </section>
+
+        <section className="sticky top-6 h-fit">
+          <ColorPreview
+            rgb={mixResult?.rgb ?? null}
+            proportions={selectedPigments.map(p => ({
+              pigment: p,
+              weight: proportions[p.id] ?? 0,
+            }))}
+          />
+        </section>
+      </div>
+    </main>
+  )
+}
+```
+
+---
+
+## 10. Router configuration
+
+```typescript
+// router.tsx
+import { createRouter } from '@tanstack/react-router'
+import { routeTree } from './routeTree.gen'
+
+export function createAppRouter() {
+  return createRouter({
+    routeTree,
+    scrollRestoration: true,
+    defaultPreload: 'intent',
+    defaultPreloadStaleTime: 0,
+  })
+}
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: ReturnType<typeof createAppRouter>
+  }
+}
+```
+
+---
+
+## 11. Composants (patterns TanStack Start)
+
+Dans `src/components/`, créer des composants **co-loqués** si rattachés à une route spécifique:
+
+- `PaletteSelector.tsx` — Boutons de sélection de pigments
+- `PigmentSlider.tsx` — Slider individuel (shadcn/ui ou input range)
+- `SliderPanel.tsx` — Liste des sliders + somme
+- `ColorPreview.tsx` — Aperçu couleur + valeurs RGB/hex
+
+**Style** : Tailwind v4 avec `@tanstack/start` template natives tokens.
+
+**Responsive** : Utiliser classes Tailwind (`md:grid-cols-2`, `sm:px-6`, etc.)
+
+---
+
+## 12. Comportement d'initialisation des proportions
+
+Quand la sélection de pigments change :
+```
+Nouveau pigment ajouté → proportions = 100 / nombre_sélectionnés pour chacun
+Pigment retiré → proportions restantes redistribuées équitablement
+```
+
+---
+
+## 13. Gestion des erreurs et validation
+
+| Situation | Comportement attendu |
+|---|---|
+| S_mix = 0 pour un canal | Utiliser `max(S, 1e-10)` |
+| K/S négatif (ne devrait pas arriver) | Retourner R = 1.0 |
+| Réflectance hors [0, 1] | Clamper |
+| RGB hors [0, 255] | Clamper et arrondir |
+| server function échoue | Afficher error UI, retry button |
+| Network offline | Afficher message, garder calcul local |
+
+Validator dans Server Function avec Zod ou type guards:
+
+```typescript
+import { z } from 'zod'
+
+const mixRequestSchema = z.object({
+  pigments: z.array(z.object({
+    pigment_id: z.number(),
+    weight: z.number().min(0).max(1),
+  })).min(2)
+})
+```
+
+---
+
+## 14. Lancement (TanStack Start)
+
+## 6. Backend FastAPI
+
+### 6.1 main.py
+
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routers import pigments, mixes
+
+app = FastAPI(title="Pigment Mixer API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(pigments.router, prefix="/api")
+app.include_router(mixes.router, prefix="/api")
+```
+
+### 6.2 Modèles Pydantic
+
+```python
+# models/pigment.py
+from pydantic import BaseModel
+
+class Pigment(BaseModel):
+    id: int
+    name: str
+    code: str
+    K: list[float]  # [K_R, K_G, K_B]
+    S: list[float]  # [S_R, S_G, S_B]
+```
+
+```python
+# models/mix.py
+from pydantic import BaseModel, validator
+
+class PigmentProportion(BaseModel):
+    pigment_id: int
+    weight: float  # entre 0 et 1 (pas en pourcentage)
+
+class MixRequest(BaseModel):
+    pigments: list[PigmentProportion]
+
+    @validator("pigments")
+    def validate_weights(cls, v):
+        total = sum(p.weight for p in v)
+        if abs(total - 1.0) > 0.01:
+            raise ValueError(f"Les poids doivent sommer à 1.0, reçu {total}")
+        if len(v) < 2:
+            raise ValueError("Minimum 2 pigments requis")
+        return v
+
+class MixResult(BaseModel):
+    rgb: list[int]          # [R, G, B] 0-255
+    reflectance: list[float] # [R, G, B] 0.0-1.0
+    ks_ratio: list[float]    # [R, G, B]
+
+class SavedMix(BaseModel):
+    id: int
+    name: str
+    pigments: list[PigmentProportion]
+    rgb: list[int]
+```
+
+### 6.3 Endpoints
+
+```
+GET  /api/pigments              → list[Pigment]
+POST /api/compute               → MixResult
+POST /api/mixes                 → SavedMix
+GET  /api/mixes                 → list[SavedMix]
+GET  /api/mixes/{id}            → SavedMix
+DELETE /api/mixes/{id}          → {"deleted": true}
+```
+
+**Exemple POST /api/compute :**
+
+Requête :
+```json
+{
+  "pigments": [
+    {"pigment_id": 3, "weight": 0.6},
+    {"pigment_id": 5, "weight": 0.4}
+  ]
+}
+```
+
+Réponse :
+```json
+{
+  "rgb": [241, 98, 51],
+  "reflectance": [0.856, 0.091, 0.038],
+  "ks_ratio": [0.014, 5.02, 11.12]
+}
+```
+
+### 6.4 Moteur physique (backend)
+
+```python
+# physics/kubelka_munk.py
+import math
+
+def mix_pigments(pigments_with_weights: list[dict]) -> dict:
+    """
+    Entrée : [{"K": [..], "S": [..], "weight": float}, ...]
+    Sortie : {"rgb": [R,G,B], "reflectance": [...], "ks_ratio": [...]}
+    """
+    K_mix = [0.0, 0.0, 0.0]
+    S_mix = [0.0, 0.0, 0.0]
+
+    for p in pigments_with_weights:
+        for c in range(3):
+            K_mix[c] += p["weight"] * p["K"][c]
+            S_mix[c] += p["weight"] * p["S"][c]
+
+    ks_ratio = [K_mix[c] / max(S_mix[c], 1e-10) for c in range(3)]
+    refl = [reflectance(ks) for ks in ks_ratio]
+    rgb = [linear_to_srgb_byte(r) for r in refl]
+
+    return {
+        "rgb": rgb,
+        "reflectance": [round(r, 6) for r in refl],
+        "ks_ratio": [round(ks, 6) for ks in ks_ratio],
+    }
+
+
+def reflectance(ks: float) -> float:
+    """Réflectance Kubelka-Munk pour couche opaque."""
+    if ks <= 0:
+        return 1.0
+    r = 1.0 + ks - math.sqrt(ks * ks + 2.0 * ks)
+    return max(0.0, min(1.0, r))
+
+
+def linear_to_srgb(c: float) -> float:
+    """Correction gamma sRGB."""
+    if c <= 0.0031308:
+        return 12.92 * c
+    return 1.055 * (c ** (1.0 / 2.4)) - 0.055
+
+
+def linear_to_srgb_byte(c: float) -> int:
+    """Linéaire → sRGB → 0-255."""
+    return round(max(0.0, min(1.0, linear_to_srgb(c))) * 255)
+```
+
+### 6.5 Dépendances
+
+```
+# requirements.txt
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+```
+
+---
+
+## 7. Frontend React
+
+### 7.1 Moteur de mélange local
+
+Le calcul tourne **localement dans le navigateur** pour éviter toute latence réseau lors du déplacement des sliders.
+
+```javascript
+// engine/mixEngine.js
+
+/**
+ * Mélange Kubelka-Munk deux constantes (K et S séparés).
+ * @param {Array} pigments - [{K: [r,g,b], S: [r,g,b], weight: number}]
+ * @returns {{rgb: [r,g,b], reflectance: [r,g,b]}}
+ */
+export function computeMix(pigments) {
+  const K_mix = [0, 0, 0];
+  const S_mix = [0, 0, 0];
+
+  for (const p of pigments) {
+    for (let c = 0; c < 3; c++) {
+      K_mix[c] += p.weight * p.K[c];
+      S_mix[c] += p.weight * p.S[c];
+    }
+  }
+
+  const reflectance = [0, 0, 0];
+  const rgb = [0, 0, 0];
+
+  for (let c = 0; c < 3; c++) {
+    const ks = K_mix[c] / Math.max(S_mix[c], 1e-10);
+    const R = ks <= 0 ? 1.0 : 1 + ks - Math.sqrt(ks * ks + 2 * ks);
+    reflectance[c] = Math.max(0, Math.min(1, R));
+    rgb[c] = Math.round(Math.max(0, Math.min(1, linearToSrgb(reflectance[c]))) * 255);
+  }
+
+  return { rgb, reflectance };
+}
+
+function linearToSrgb(c) {
+  if (c <= 0.0031308) return 12.92 * c;
+  return 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055;
+}
+```
+
+### 7.2 Algorithme de normalisation des proportions
+
+```javascript
+/**
+ * Quand un slider change, redistribue les proportions
+ * pour que la somme reste 100%.
+ *
+ * @param {Object} proportions - {pigmentId: pourcentage, ...}
+ * @param {string} changedId - id du pigment modifié
+ * @param {number} newValue - nouvelle valeur (0-100)
+ * @returns {Object} nouvelles proportions normalisées
+ */
+export function normalizeProportions(proportions, changedId, newValue) {
+  const clamped = Math.min(100, Math.max(0, newValue));
+  const otherIds = Object.keys(proportions).filter(id => id !== changedId);
+  const othersSum = otherIds.reduce((sum, id) => sum + proportions[id], 0);
+  const remaining = 100 - clamped;
+
+  const result = { [changedId]: clamped };
+
+  if (otherIds.length === 0) {
+    // Un seul pigment → forcément 100% (ne devrait pas arriver avec min=2)
+    result[changedId] = 100;
+  } else if (othersSum === 0) {
+    // Tous les autres sont à 0 → distribuer équitablement
+    const share = remaining / otherIds.length;
+    otherIds.forEach(id => { result[id] = share; });
+  } else {
+    // Redistribution proportionnelle
+    otherIds.forEach(id => {
+      result[id] = (proportions[id] / othersSum) * remaining;
+    });
+  }
+
+  return result;
+}
+```
+
+### 7.3 Hook principal
+
+```javascript
+// hooks/usePigmentMix.js
+
+/**
+ * State :
+ * - allPigments: Pigment[]           (tous les pigments disponibles)
+ * - selectedIds: Set<number>          (ids sélectionnés, 2-7)
+ * - proportions: {[id]: number}       (pourcentages, somme = 100)
+ * - mixResult: {rgb, reflectance}     (résultat calculé)
+ *
+ * Comportements :
+ * - Au chargement : fetch GET /api/pigments
+ * - togglePigment(id) :
+ *     si déjà sélectionné et count > 2 → retirer, redistribuer équitablement
+ *     si pas sélectionné et count < 7 → ajouter, redistribuer équitablement
+ * - updateProportion(id, value) :
+ *     appeler normalizeProportions()
+ *     recalculer le mélange via computeMix()
+ * - Le recalcul de mixResult se fait à chaque changement de proportions
+ *   (via useEffect ou dans le handler directement)
+ */
+```
+
+### 7.4 Composants
+
+**`App.jsx`**
+- Layout principal
+- Charge le hook `usePigmentMix`
+- Passe les props aux composants enfants
+
+**`PaletteSelector.jsx`**
+- Affiche tous les pigments disponibles
+- Chaque pigment : bouton avec pastille de couleur + nom
+- Clic → `togglePigment(id)`
+- Pigments sélectionnés visuellement marqués (bordure, check)
+- Affiche le nombre de sélectionnés (min 2, max 7)
+
+**`SliderPanel.jsx`**
+- Affiche un `PigmentSlider` par pigment sélectionné
+- Affiche la somme (doit toujours être 100%)
+
+**`PigmentSlider.jsx`**
+- Props : `pigment`, `value`, `onChange`
+- Slider range 0-100, pas de 0.1
+- Affiche : nom du pigment, pastille couleur, valeur numérique
+- `onChange` → appelle `updateProportion(id, value)`
+
+**`ColorPreview.jsx`**
+- Carré de grande taille affichant `background-color: rgb(r, g, b)`
+- Affiche les valeurs RGB numériquement
+- Affiche le code hex
+- Optionnel : affiche la réflectance par canal
+
+### 7.5 Comportement d'initialisation des proportions
+
+Quand la sélection de pigments change :
+```
+Nouveau pigment ajouté → proportions = 100 / nombre_sélectionnés pour chacun
+Pigment retiré → proportions restantes redistribuées équitablement
+```
+
+### 7.6 API client
+
+```javascript
+// services/api.js
+const BASE_URL = "http://localhost:8000/api";
+
+export async function fetchPigments() {
+  const res = await fetch(`${BASE_URL}/pigments`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function saveMix(name, pigments) {
+  const res = await fetch(`${BASE_URL}/mixes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, pigments }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchMixes() {
+  const res = await fetch(`${BASE_URL}/mixes`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+```
+
+---
+
+## 8. Flow complet
+
+```
+Utilisateur déplace un slider
+        │
+        ▼
+updateProportion(id, newValue)
+        │
+        ▼
+normalizeProportions(proportions, id, newValue)
+    ├── cas normal : redistribution proportionnelle
+    ├── cas autres = 0 : distribution équitable
+    └── clamp [0, 100]
+        │
+        ▼
+setProportions(nouvellesProportions)
+        │
+        ▼
+useEffect détecte changement
+        │
+        ▼
+computeMix(pigmentsSélectionnésAvecPoids)
+    ├── K_mix[c] = Σ w_i × K_i[c]
+    ├── S_mix[c] = Σ w_i × S_i[c]
+    ├── ks[c] = K_mix[c] / S_mix[c]
+    ├── R[c] = 1 + ks - √(ks² + 2ks)
+    └── rgb[c] = sRGB_gamma(R[c]) × 255
+        │
+        ▼
+setMixResult({ rgb, reflectance })
+        │
+        ▼
+ColorPreview se met à jour
+```
+
+---
+
+## 9. Gestion des erreurs et cas limites
+
+| Situation | Comportement attendu |
+|---|---|
+| S_mix = 0 pour un canal | Utiliser `max(S, 1e-10)` |
+| K/S négatif (ne devrait pas arriver) | Retourner R = 1.0 |
+| Réflectance hors [0, 1] | Clamper |
+| RGB hors [0, 255] | Clamper et arrondir |
+| Somme des poids ≠ 100% (erreur flottante) | Tolérance de 0.01, renormaliser si besoin |
+| Tous les autres sliders à 0% | Distribuer `remaining` équitablement |
+| Moins de 2 pigments sélectionnés | Désactiver les sliders, pas d'aperçu |
+| Plus de 7 pigments | Bouton d'ajout grisé |
+| Fetch /api/pigments échoue | Message d'erreur, bouton retry |
+| Valeur slider non numérique | Ignorer, garder l'ancienne valeur |
+
+---
+
+## 10. Lancement
+
+TanStack Start inclut le serveur de développement intégré :
+
+```bash
+cd frontend
+npm install
+npm run dev   # Lance sur http://localhost:3000
+```
+
+```bash
+npm run build # Build de production (SSR + static pré-rendu)
+npm run preview # Preview du build
+npm run lint   # ESLint avec config TanStack
+npm run format # Prettier
+```
+
+---
+
+**Structure des routes** :
+
+```
+src/routes/
+├── __root.tsx          # Layout HTML global
+├── index.tsx           # "/" - Page d'accueil
+└── api/
+    ├── pigments.ts     # Server Function GET /api/pigments
+    └── mixes.ts        # Server Function POST /api/compute (optionnel backend)
+```
+
+La génération de `routeTree.gen.ts` est automatique au build/dev. Ne pas l'éditer manuellement.
+
+---
+
+## 11. Vérifications à effectuer
+
+1. **Blanc pur** : sélectionner uniquement Blanc de Titane → aperçu ≈ blanc
+2. **Noir pur** : sélectionner uniquement Noir d'Ivoire → aperçu ≈ noir
+3. **Rouge + Jaune** : proportions 30/70 → doit tendre vers l'orange
+4. **Bleu + Jaune** : doit donner un vert foncé/sombre (mélange soustractif, pas additif)
+5. **Ajout de blanc** à un pigment saturé → éclaircissement progressif
+6. **Ajout de noir** → assombrissement progressif
+7. **Somme = 100%** : vérifier après chaque interaction
+8. **Server Functions** : Vérifier que les appel se font sans `fetch` manuel
+
+---
+
+## 12. Extensions futures
+
+```
+┌─────────────────────────────────────────────────┐
+│  Extension                    │  Complexité      │
+├─────────────────────────────────────────────────┤
+│  Mélange spectral complet     │  Haute           │
+│  (31 longueurs d'onde)        │                  │
+│                               │                  │
+│  Bibliothèque de pigments     │  Moyenne         │
+│  réels (base de données)      │                  │
+│                               │                  │
+│  Simulation texture           │  Haute           │
+│  (aquarelle, huile, acrylique)│                  │
+│                               │                  │
+│  Triangle de mélange          │  Moyenne         │
+│  interactif (3 pigments)      │                  │
+│                               │                  │
+│  Export PNG/SVG de la couleur  │  Basse           │
+│                               │                  │
+│  Persistance SQLite/PostgreSQL│  Moyenne         │
+│                               │                  │
+│  Illuminant variable          │  Moyenne         │
+│  (D65, A, F2...)              │                  │
+│                               │                  │
+│  Métamérisme                  │  Haute           │
+│  (nécessite spectral complet) │                  │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## Résumé des corrections par rapport au prompt initial
+
+| Problème d'origine | Correction appliquée |
+|---|---|
+| Un seul scalaire K/S par pigment | K et S séparés, 3 canaux RGB chacun |
+| Mélange des ratios K/S | Mélange de K et S séparément |
+| Conversion RGB non définie | Pipeline complet : réflectance → gamma sRGB → 0-255 |
+| CORS absent | Middleware CORSMiddleware configuré |
+| Normalisation sans cas limites | 3 cas traités : proportionnel, équitable, clamp |
+| Persistance vague | In-memory défini, SQLite en extension |
+| Validation absente | Pydantic validators, tableau de cas limites |
+| Données pigments absentes | 7 pigments avec valeurs K/S vérifiées |
