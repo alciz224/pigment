@@ -82,22 +82,6 @@ export default function ColorPreview({ rgb, proportions }: ColorPreviewProps) {
         )}
       </div>
 
-      {/* RGB values grid */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg bg-[var(--surface)] p-3 text-center">
-          <p className="text-xs text-[var(--sea-ink-soft)]">R</p>
-          <p className="text-xl font-bold text-[var(--sea-ink)]">{r}</p>
-        </div>
-        <div className="rounded-lg bg-[var(--surface)] p-3 text-center">
-          <p className="text-xs text-[var(--sea-ink-soft)]">G</p>
-          <p className="text-xl font-bold text-[var(--sea-ink)]">{g}</p>
-        </div>
-        <div className="rounded-lg bg-[var(--surface)] p-3 text-center">
-          <p className="text-xs text-[var(--sea-ink-soft)]">B</p>
-          <p className="text-xl font-bold text-[var(--sea-ink)]">{b}</p>
-        </div>
-      </div>
-
       {/* Image Color Picker button */}
       <div className="my-4 flex justify-center border-t border-[var(--line)] pt-4">
         <ImageColorPicker

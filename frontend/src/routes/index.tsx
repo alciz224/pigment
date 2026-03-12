@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { usePigmentMix } from '../lib/hooks/usePigmentMix'
 import PaletteSelector from '../components/PaletteSelector'
-import ImprovedSlider from '../components/ImprovedSlider'
+import MinimalSlider from '../components/MinimalSlider'
 import ColorPreview from '../components/ColorPreview'
 import { useMemo } from 'react'
 
@@ -31,8 +31,8 @@ function PigmentMixerPage() {
 
   if (isLoading) {
     return (
-      <main className="scroll-container h-screen overflow-y-scroll snap-y snap-mandatory">
-        <section className="h-screen flex items-center justify-center snap-start">
+      <main className="scroll-container min-h-screen overflow-y-auto">
+        <section className="min-h-screen flex items-center justify-center">
           <div className="island-shell rounded-2xl p-10 text-center">
             <p className="text-[var(--sea-ink-soft)]">Chargement des pigments...</p>
           </div>
@@ -43,8 +43,8 @@ function PigmentMixerPage() {
 
   if (error) {
     return (
-      <main className="scroll-container h-screen overflow-y-scroll snap-y snap-mandatory">
-        <section className="h-screen flex items-center justify-center snap-start">
+      <main className="scroll-container min-h-screen overflow-y-auto">
+        <section className="min-h-screen flex items-center justify-center">
           <div className="island-shell rounded-2xl p-10 text-center">
             <p className="mb-4 text-red-500">Erreur: {error.message}</p>
             <button
@@ -60,10 +60,10 @@ function PigmentMixerPage() {
   }
 
   return (
-    <main className="scroll-container h-screen overflow-y-scroll snap-y snap-mandatory scroll-smooth">
+    <main className="scroll-container min-h-screen overflow-y-auto">
       {/* Section 1: Hero + Palette */}
-      <section className="snap-start min-h-screen overflow-y-auto bg-[var(--bg)] p-6">
-        <div className="mx-auto h-full max-w-6xl space-y-6">
+      <section className="min-h-screen bg-[var(--bg)] p-6 pb-12">
+        <div className="mx-auto max-w-6xl space-y-6">
           {/* Hero */}
           <div className="text-center pt-6">
             <div className="mb-2 inline-block rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--kicker)]">
@@ -79,7 +79,7 @@ function PigmentMixerPage() {
           </div>
 
           {/* Palette */}
-          <div className="flex-1 min-h-0 [&>*]:min-h-full">
+          <div className="min-h-[400px]">
             <PaletteSelector
               pigments={pigments}
               selectedIds={selectedIds}
@@ -90,53 +90,34 @@ function PigmentMixerPage() {
       </section>
 
       {/* Section 2: Proportions + Result */}
-      <section className="snap-start min-h-screen overflow-y-auto bg-[var(--surface-weak)] p-6">
+      <section className="bg-[var(--surface-weak)] p-6 pb-12">
         <div className="min-h-full mx-auto grid h-full grid-cols-1 md:grid-cols-2 gap-6 pb-6">
-          {/* Top/Left: Proportions (vertical sliders) */}
-          <div className="island-shell rounded-2xl p-6 overflow-y-auto">
-            <div className="mb-4 flex items-center justify-between border-b border-[var(--line)] pb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--sea-ink)]">
-                  Proportions
-                </h2>
-                <p className="text-sm text-[var(--sea-ink-soft)]">
-                  {selectedPigments.length} pigment{selectedPigments.length !== 1 ? 's' : ''} sélectionné{selectedPigments.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className={`text-right`}>
-                <div className={`text-2xl font-bold ${total === 100 ? 'text-[var(--palm)]' : 'text-[var(--lagoon-deep)]'}`}>
-                  {total.toFixed(0)}%
-                </div>
-                <p className="text-xs text-[var(--sea-ink-soft)]">
-                  {total === 100 ? '✓ Somme à 100%' : `Manque ${(100 - total).toFixed(0)}%`}
-                </p>
+          {/* Left: Minimal Proportions sliders */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-[var(--line)] pb-3">
+              <h2 className="text-base font-semibold text-[var(--sea-ink)]">
+                Proportions
+              </h2>
+              <div className={`flex items-center gap-2 ${total === 100 ? 'text-[var(--palm)]' : 'text-[var(--lagoon-deep)]'}`}>
+                <span className="text-lg font-bold">{total.toFixed(0)}%</span>
+                {total !== 100 && (
+                  <span className="text-xs text-[var(--sea-ink-soft)]">
+                    (manque {((100 - total).toFixed(0))}%)
+                  </span>
+                )}
               </div>
             </div>
 
             {selectedPigments.length === 0 ? (
-              <div className="flex h-[calc(100%-80px)] flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--surface-strong)]">
-                  <svg className="h-8 w-8 text-[var(--lagoon-deep)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                  </svg>
-                </div>
-                <p className="text-lg font-medium text-[var(--sea-ink)]">
-                  Aucun pigment sélectionné
+              <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)]">
+                <p className="text-sm text-[var(--sea-ink-soft)]">
+                  Sélectionnez 2 à 7 pigments
                 </p>
-                <p className="mt-2 text-sm text-[var(--sea-ink-soft)]">
-                  Sélectionnez des pigments pour créer votre mélange
-                </p>
-                <button
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="mt-4 rounded-full border border-[var(--lagoon-deep)] bg-[var(--lagoon-deep)]/10 px-4 py-2 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:bg-[var(--lagoon-deep)] hover:text-white"
-                >
-                  Voir la palette
-                </button>
               </div>
             ) : (
-              <div className="space-y-4 pb-4">
+              <div className="space-y-2">
                 {selectedPigments.map(pigment => (
-                  <ImprovedSlider
+                  <MinimalSlider
                     key={pigment.id}
                     pigment={pigment}
                     value={proportions[pigment.id] || 0}

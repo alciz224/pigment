@@ -267,7 +267,7 @@ export default function ImageColorPicker({ onColorPicked, pickedColor }: ImageCo
               {/* Crosshair cursor indicator */}
               {magnifierPosition && hoverColor && (
                 <div
-                  className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 border-2 border-white shadow-lg"
+                  className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 border-2 border-white shadow-lg pointer-events-none"
                   style={{ left: magnifierPosition.x, top: magnifierPosition.y }}
                 />
               )}
@@ -275,7 +275,7 @@ export default function ImageColorPicker({ onColorPicked, pickedColor }: ImageCo
               {/* Floating magnifier preview */}
               {magnifierPosition && hoverColor && (
                 <div
-                  className="pointer-events-none absolute transform -translate-x-1/2 -translate-y-[100%] rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-xl"
+                  className="absolute transform -translate-x-1/2 -translate-y-[100%] rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-xl pointer-events-none"
                   style={{ left: magnifierPosition.x, top: magnifierPosition.y }}
                 >
                   <div
