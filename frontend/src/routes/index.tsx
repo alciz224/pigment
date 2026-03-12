@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { usePigmentMix } from '../lib/hooks/usePigmentMix'
 import PaletteSelector from '../components/PaletteSelector'
 import ImprovedSlider from '../components/ImprovedSlider'
+import ColorPreview from '../components/ColorPreview'
 import { useMemo } from 'react'
 
 export const Route = createFileRoute('/')({
@@ -150,43 +151,13 @@ function PigmentMixerPage() {
 
           {/* Right: Result */}
           <div className="flex flex-col">
-            {/* Large color preview */}
-            <div className="island-shell rounded-2xl p-6 flex-1 flex flex-col overflow-hidden">
-              <h2 className="mb-4 text-lg font-semibold text-[var(--sea-ink)]">
-                Résultat
-              </h2>
-              <div className="flex-1 flex items-center justify-center">
-                {mixResult ? (
-                  <div className="w-full flex flex-col items-center gap-4">
-                    <div
-                      className="w-full h-48 rounded-lg shadow-inner transition-colors duration-300"
-                      style={{ backgroundColor: `rgb(${mixResult.rgb[0]}, ${mixResult.rgb[1]}, ${mixResult.rgb[2]})` }}
-                    />
-                    <div className="text-center">
-                      <p className="text-3xl font-bold font-mono tracking-wider text-[var(--sea-ink)]">
-                        #{mixResult.rgb.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase()}
-                      </p>
-                      <div className="mt-2 flex justify-center gap-4">
-                        <span className="text-lg">
-                          <span className="font-bold text-[var(--sea-ink)]">R:</span> {mixResult.rgb[0]}
-                        </span>
-                        <span className="text-lg">
-                          <span className="font-bold text-[var(--sea-ink)]">G:</span> {mixResult.rgb[1]}
-                        </span>
-                        <span className="text-lg">
-                          <span className="font-bold text-[var(--sea-ink)]">B:</span> {mixResult.rgb[2]}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-[var(--sea-ink-soft)]">
-                    <p className="text-lg">Sélectionnez au moins 2 pigments</p>
-                    <p className="text-sm mt-2">pour voir le résultat du mélange</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <ColorPreview
+              rgb={mixResult?.rgb ?? null}
+              proportions={proportions.length > 0 ? Object.entries(proportions).map(([id, weight]) => ({
+                name: selectedPigments.find(p => p.id === parseInt(id))?.name || '',
+                weight
+              })) : []}
+            />
           </div>
         </div>
       </section>
